@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TierList Studio - Multi-Category & Notes</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SortableJS untuk Drag & Drop di PC & Layar Sentuh Mobile -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <!-- html2canvas untuk Export Tier List ke Gambar PNG -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+        .sortable-ghost { opacity: 0.35; transform: scale(0.95); }
+        .sortable-drag { cursor: grabbing !important; }
+        
+        /* Mencegah pull-to-refresh saat drag di HP */
+        .tier-dropzone { touch-action: pan-y; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased selection:bg-blue-600 selection:text-white overflow-hidden h-dvh flex flex-col md:flex-row">
+
+    <!-- OVERLAY MOBILE SIDEBAR -->
+    <div id="sidebarOverlay" onclick="toggleSidebar(false)" class="fixed inset-0 bg-black/60 z-30 hidden md:hidden backdrop-blur-xs transition-opacity"></div>
+
+    <!-- SIDEBAR KATEGORI & PENGATURAN -->
+    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-72 bg-gray-900 border-r border-gray-800 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out shrink-0">
+        <!-- Header Sidebar -->
+        <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                <span class="ml-1 font-bold text-base tracking-wide text-gray-100">Kategori Tier List</span>
+            </div>
+            <button onclick="toggleSidebar(false)" class="md:hidden text-gray-400 hover:text-white p-1">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <!-- Daftar Board / Kategori -->
+        <div class="p-3 flex-1 overflow-y-auto space-y-1">
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 py-1.5">Daftar Board Kamu</div>
+            <div id="categoryList" class="space-y-1"></div>
+
+            <button onclick="openCategoryModal()" class="w-full mt-3 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium border border-gray-700 transition">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Buat Kategori Baru</span>
+            </button>
+        </div>
+
+        <!-- Pengaturan Board -->
+        <div class="p-4 border-t border-gray-800 bg-gray-900/60 space-y-1.5 text-sm">
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Settings & Data</div>
+            <button onclick="openTierSettingsModal()" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition">
+                <i data-lucide="palette" class="w-4 h-4 text-blue-400"></i>
+                <span>Ubah Label / Warna Tier</span>
+            </button>
+            <button onclick="exportToPNG()" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition">
+                <i data-lucide="image-down" class="w-4 h-4 text-emerald-400"></i>
+                <span>Export ke PNG</span>
+            </button>
+            <div class="grid grid-cols-2 gap-1.5 pt-1">
+                <button onclick="exportBackupJSON()" class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-800 text-xs text-gray-300 border border-gray-700/60 transition" title="Simpan semua kategori & gambar ke file JSON">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Backup
+                </button>
+                <label class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-800 text-xs text-gray-300 border border-gray-700/60 cursor-pointer transition" title="Pulihkan data dari file JSON">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i> Restore
+                    <input type="file" id="importJsonInput" accept=".json" class="hidden" onchange="importBackupJSON(event)">
+                </label>
+            </div>
+            <button onclick="deleteCurrentCategory()" class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-red-400 hover:bg-red-950/40 hover:text-red-300 transition mt-1">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                <span>Hapus Kategori Ini</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- AREA UTAMA (MAIN CONTENT) -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden bg-gray-950">
+        
+        <!-- Top Navbar -->
+        <header class="h-16 border-b border-gray-800 bg-gray-900/80 backdrop-blur-md px-4 md:px-6 flex items-center justify-between shrink-0 z-20">
+            <div class="flex items-center gap-3 min-w-0">
+                <button onclick="toggleSidebar(true)" class="md:hidden p-2 -ml-2 text-gray-300 hover:text-white rounded-lg hover:bg-gray-800">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+                <h1 id="activeCategoryTitle" class="text-lg md:text-xl font-extrabold tracking-tight text-white truncate flex items-center gap-2">
+                    🎬 TIER FILM & ANIME
+                </h1>
+                <button onclick="openCategoryModal(true)" class="text-gray-400 hover:text-gray-200 p-1 rounded" title="Ubah Nama Kategori">
+                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button onclick="openAddImageModal()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold px-3.5 py-2 rounded-lg text-sm shadow-lg shadow-blue-600/20 transition cursor-pointer">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>Tambah Gambar</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Kontainer Scroll Tier List & Unranked Pool -->
+        <div class="flex-1 overflow-y-auto p-3 md:p-6 space-y-6">
+            
+            <!-- Area yang akan di-capture saat Export PNG -->
+            <div id="captureArea" class="bg-gray-950 rounded-xl overflow-hidden border border-gray-800 shadow-xl">
+                <!-- Header Judul saat di-export (Tersembunyi di mode normal) -->
+                <div id="exportHeader" class="hidden bg-gray-900 px-6 py-4 border-b border-gray-800">
+                    <h2 id="exportTitleText" class="text-xl font-bold text-white"></h2>
+                </div>
+
+                <!-- Baris-baris Tier (S+, S, A, B, C, D, E) -->
+                <div id="tierRowsContainer" class="divide-y divide-gray-800"></div>
+            </div>
+
+            <!-- UNRANKED POOL -->
+            <section class="bg-gray-900/90 border border-gray-800 rounded-xl p-4 shadow-lg">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="inbox" class="w-4 h-4 text-blue-400"></i>
+                        <h2 class="text-xs md:text-sm font-bold uppercase tracking-wider text-gray-300">
+                            UNRANKED POOL (Belum Masuk Tier)
+                        </h2>
+                        <span id="unrankedCount" class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-medium">0</span>
+                    </div>
+                    <span class="text-xs text-gray-400 hidden sm:inline">Tips: Geser gambar ke tier, klik gambar untuk catatan/ubah tier, atau tekan <kbd class="px-1.5 py-0.5 bg-gray-800 rounded border border-gray-700 text-gray-300">Ctrl+V</kbd> untuk paste gambar.</span>
+                </div>
+
+                <div id="unrankedPool" data-tier-id="unranked" class="tier-dropzone min-h-[110px] bg-gray-950/70 border-2 border-dashed border-gray-800 rounded-lg p-2.5 flex flex-wrap gap-2.5 items-start content-start transition-colors">
+                    <!-- Item Unranked dirender di sini -->
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- MODAL 1: DETAIL ITEM (NOTE, PINDAH TIER, HAPUS) -->
+    <!-- ========================================== -->
+    <div id="itemDetailModal" class="fixed inset-0 bg-black/75 z-50 hidden flex items-center justify-center p-4 backdrop-blur-xs">
+        <div class="bg-gray-900 border border-gray-700/80 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <!-- Header Modal -->
+            <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-white">Detail Item</h3>
+                <button onclick="closeItemModal()" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Body Modal -->
+            <div class="p-5 grid grid-cols-1 sm:grid-cols-12 gap-5 max-h-[80vh] overflow-y-auto">
+                <!-- Kolom Kiri: Preview Gambar & Tombol Hapus -->
+                <div class="sm:col-span-5 flex flex-col items-center">
+                    <div class="w-full aspect-square max-w-[200px] bg-gray-950 rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center shadow-inner">
+                        <img id="modalItemImage" src="" alt="Preview" class="w-full h-full object-contain">
+                    </div>
+                    <label class="mt-3 text-xs text-blue-400 hover:text-blue-300 cursor-pointer flex items-center gap-1">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Ganti Gambar
+                        <input type="file" accept="image/*" class="hidden" onchange="replaceItemImage(event)">
+                    </label>
+                    <button onclick="deleteCurrentItem()" class="mt-4 w-full py-2 px-3 rounded-lg bg-red-950/50 hover:bg-red-900/60 text-red-300 border border-red-800/50 flex items-center justify-center gap-2 text-sm font-medium transition">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        <span>Hapus Gambar</span>
+                    </button>
+                </div>
+
+                <!-- Kolom Kanan: Form Judul, Posisi Tier, & Catatan -->
+                <div class="sm:col-span-7 flex flex-col justify-between space-y-4">
+                    <div class="space-y-3.5">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-300 mb-1">Nama / Judul Item:</label>
+                            <input type="text" id="modalItemTitle" placeholder="Contoh: Matcha Latte / Solo Leveling..." class="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-300 mb-1">Posisi Tier Saat Ini:</label>
+                            <select id="modalItemTierSelect" class="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none transition">
+                                <!-- Diisi otomatis via JS -->
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-300 mb-1">Catatan / Review (Note):</label>
+                            <textarea id="modalItemNote" rows="4" placeholder="Tulis alasan rating, review singkat, atau catatan penting di sini..." class="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg p-3 text-sm text-white outline-none transition resize-none"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end pt-2">
+                        <button onclick="saveItemDetail()" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            <span>Simpan Detail</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL 2: TAMBAH GAMBAR (UPLOAD / URL / PASTE) -->
+    <!-- ========================================== -->
+    <div id="addImageModal" class="fixed inset-0 bg-black/75 z-50 hidden flex items-center justify-center p-4 backdrop-blur-xs">
+        <div class="bg-gray-900 border border-gray-700/80 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h3 class="text-base font-bold text-white">Tambah Gambar ke Board</h3>
+                <button onclick="closeAddImageModal()" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-4 text-sm">
+                <!-- Dropzone Upload -->
+                <label class="border-2 border-dashed border-gray-700 hover:border-blue-500 bg-gray-950/60 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition group">
+                    <div class="w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                        <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                    </div>
+                    <span class="font-semibold text-gray-200">Pilih Gambar dari Perangkat</span>
+                    <span class="text-xs text-gray-400 mt-1">Bisa pilih banyak foto sekaligus (JPG, PNG, WEBP)</span>
+                    <input type="file" id="fileUploadInput" accept="image/*" multiple class="hidden" onchange="handleMultipleFiles(event)">
+                </label>
+
+                <div class="relative flex py-1 items-center">
+                    <div class="grow border-t border-gray-800"></div>
+                    <span class="shrink mx-3 text-xs text-gray-500 uppercase">Atau via URL Gambar</span>
+                    <div class="grow border-t border-gray-800"></div>
+                </div>
+
+                <!-- Input via Link URL -->
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Link URL Gambar:</label>
+                        <input type="url" id="imageUrlInput" placeholder="https://contoh.com/gambar.jpg" class="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Judul (Opsional):</label>
+                            <input type="text" id="imageUrlTitle" placeholder="Nama item..." class="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Masuk ke Tier:</label>
+                            <select id="imageUrlTier" class="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-sm text-white outline-none"></select>
+                        </div>
+                    </div>
+                    <button onclick="addImageFromUrl()" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-medium py-2 rounded-lg border border-gray-700 transition">
+                        Tambahkan dari URL
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL 3: BUAT / EDIT KATEGORI BOARD -->
+    <!-- ========================================== -->
+    <div id="categoryModal" class="fixed inset-0 bg-black/75 z-50 hidden flex items-center justify-center p-4 backdrop-blur-xs">
+        <div class="bg-gray-900 border border-gray-700/80 rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl">
+            <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h3 id="categoryModalHeader" class="text-base font-bold text-white">Buat Kategori Baru</h3>
+                <button onclick="closeCategoryModal()" class="text-gray-400 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-4 text-sm">
+                <div class="grid grid-cols-4 gap-2">
+                    <div class="col-span-1">
+                        <label class="block text-xs text-gray-400 mb-1">Ikon</label>
+                        <input type="text" id="catIconInput" value="📌" maxlength="4" class="w-full text-center bg-gray-950 border border-gray-700 rounded-lg py-2 text-lg outline-none focus:border-blue-500">
+                    </div>
+                    <div class="col-span-3">
+                        <label class="block text-xs text-gray-400 mb-1">Nama Kategori</label>
+                        <input type="text" id="catNameInput" placeholder="Contoh: Kopi Susu, Anime Action..." class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2.5 text-white outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-1.5 pt-1">
+                    <span class="text-xs text-gray-400 w-full mb-0.5">Pilih Ikon Cepat:</span>
+                    <button type="button" onclick="setCatEmoji('🎬')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">🎬</button>
+                    <button type="button" onclick="setCatEmoji('🍹')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">🍹</button>
+                    <button type="button" onclick="setCatEmoji('🍜')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">🍜</button>
+                    <button type="button" onclick="setCatEmoji('⚔️')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">⚔️</button>
+                    <button type="button" onclick="setCatEmoji('🎮')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">🎮</button>
+                    <button type="button" onclick="setCatEmoji('📚')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">📚</button>
+                    <button type="button" onclick="setCatEmoji('🎵')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">🎵</button>
+                    <button type="button" onclick="setCatEmoji('⚡')" class="p-1.5 bg-gray-800 rounded hover:bg-gray-700">⚡</button>
+                </div>
+                <button onclick="saveCategoryForm()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg transition">
+                    Simpan Kategori
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL 4: PENGATURAN LABEL & WARNA TIER -->
+    <!-- ========================================== -->
+    <div id="tierSettingsModal" class="fixed inset-0 bg-black/75 z-50 hidden flex items-center justify-center p-4 backdrop-blur-xs">
+        <div class="bg-gray-900 border border-gray-700/80 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h3 class="text-base font-bold text-white">Kustomisasi Baris Tier</h3>
+                <button onclick="closeTierSettingsModal()" class="text-gray-400 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="tierSettingsList" class="p-5 overflow-y-auto space-y-2.5 flex-1 text-sm">
+                <!-- Daftar baris tier dirender di sini -->
+            </div>
+            <div class="p-4 border-t border-gray-800 bg-gray-900/90 flex items-center justify-between gap-2">
+                <button onclick="addNewTierRow()" class="px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium border border-gray-700 flex items-center gap-1.5">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Tambah Baris Tier
+                </button>
+                <button onclick="saveTierSettings()" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                    Simpan Perubahan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed bottom-4 right-4 z-50 bg-gray-800 border border-gray-700 text-white px-4 py-2.5 rounded-xl shadow-xl text-sm font-medium transform translate-y-20 opacity-0 transition-all duration-200 pointer-events-none"></div>
+
+    <script>
+        // ==========================================
+        // 1. DEFAULT DATA & KONFIGURASI TIER
+        // ==========================================
+        const DEFAULT_TIERS = [
+            { id: 'S+', label: 'S+', desc: 'Masterpiece / Favorit Utama', color: '#ef4444' },
+            { id: 'S',  label: 'S',  desc: 'Sangat Bagus / Enak',         color: '#f97316' },
+            { id: 'A',  label: 'A',  desc: 'Bagus / Recommended',         color: '#f59e0b' },
+            { id: 'B',  label: 'B',  desc: 'Lumayan / Standar',           color: '#eab308' },
+            { id: 'C',  label: 'C',  desc: 'Biasa Saja',                  color: '#22c55e' },
+            { id: 'D',  label: 'D',  desc: 'Kurang Cocok',                color: '#3b82f6' },
+            { id: 'E',  label: 'E',  desc: 'Skip / Buruk',                color: '#a855f7' }
+        ];
+
+        // Generator SVG Poster Dummy agar tampilan awal langsung hidup seperti mockup
+        function createPlaceholderSVG(title, subtitle, bg1, bg2) {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+                <defs>
+                    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="${bg1}"/>
+                        <stop offset="100%" stop-color="${bg2}"/>
+                    </linearGradient>
+                </defs>
+                <rect width="240" height="240" fill="url(#g)"/>
+                <rect x="12" y="12" width="216" height="216" rx="14" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+                <text x="120" y="115" font-family="sans-serif" font-weight="800" font-size="22" fill="#ffffff" text-anchor="middle">${title}</text>
+                <text x="120" y="145" font-family="sans-serif" font-weight="500" font-size="13" fill="rgba(255,255,255,0.8)" text-anchor="middle">${subtitle}</text>
+            </svg>`;
+            return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        }
+
+        const INITIAL_STATE = {
+            activeCategoryId: 'cat-anime',
+            categories: [
+                {
+                    id: 'cat-anime',
+                    name: 'Tier Film & Anime',
+                    icon: '🎬',
+                    tiers: JSON.parse(JSON.stringify(DEFAULT_TIERS)),
+                    items: [
+                        { id: 'item-1', title: 'Solo Leveling', tier: 'S+', note: 'Koreografi pertarungan Sung Jin-Woo dan kualitas produksi animasinya luar biasa.', image: createPlaceholderSVG('SOLO', 'LEVELING', '#1e3a8a', '#0f172a') },
+                        { id: 'item-2', title: 'Tokyo Revengers (Tenjiku Arc)', tier: 'S', note: 'Konflik emosional antara Mikey dan Izana dibangun dengan sangat intens.', image: createPlaceholderSVG('TOKYO', 'REVENGERS', '#7f1d1d', '#111827') },
+                        { id: 'item-3', title: 'Attack on Titan', tier: 'S+', note: 'Plot twist dan world-building terbaik dekade ini.', image: createPlaceholderSVG('AOT', 'FINAL SEASON', '#3f6212', '#18181b') }
+                    ]
+                },
+                {
+                    id: 'cat-drink',
+                    name: 'Minuman Favorit',
+                    icon: '🍹',
+                    tiers: JSON.parse(JSON.stringify(DEFAULT_TIERS)),
+                    items: [
+                        { id: 'item-4', title: 'Matcha Latte Kopi Kenangan', tier: 'S', note: 'Creamy, manisnya pas kalau pesan less sugar. Cocok diminum dingin pas siang hari. Harga ramah di kantong.', image: createPlaceholderSVG('MATCHA', 'LATTE ICE', '#15803d', '#052e16') },
+                        { id: 'item-5', title: 'Americano Dingin', tier: 'A', note: 'Teman setia nugas malam biar tetap fokus.', image: createPlaceholderSVG('ICED', 'AMERICANO', '#451a03', '#1c1917') }
+                    ]
+                },
+                {
+                    id: 'cat-food',
+                    name: 'Makanan Favorit',
+                    icon: '🍜',
+                    tiers: JSON.parse(JSON.stringify(DEFAULT_TIERS)),
+                    items: []
+                },
+                {
+                    id: 'cat-char',
+                    name: 'Karakter Terkuat',
+                    icon: '⚔️',
+                    tiers: JSON.parse(JSON.stringify(DEFAULT_TIERS)),
+                    items: []
+                }
+            ]
+        };
+
+        let appState = null;
+        let currentEditingItemId = null;
+        let isEditingCategoryMode = false;
+        let sortableInstances = [];
+
+        // ==========================================
+        // 2. PENYIMPANAN INDEXED-DB (KAPASITAS BESAR)
+        // ==========================================
+        const DB_NAME = 'TierListStudioDB';
+        const STORE_NAME = 'app_state';
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME);
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function loadStateFromDB() {
+            try {
+                const db = await openDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const req = tx.objectStore(STORE_NAME).get('main');
+                    req.onsuccess = () => resolve(req.result || INITIAL_STATE);
+                    req.onerror = () => resolve(INITIAL_STATE);
+                });
+            } catch (e) {
+                return INITIAL_STATE;
+            }
+        }
+
+        async function saveStateToDB() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(appState, 'main');
+            } catch (e) {
+                console.error('Gagal menyimpan ke IndexedDB:', e);
+            }
+        }
+
+        // ==========================================
+        // 3. HELPER UTILITAS & KOMPRESI GAMBAR
+        // ==========================================
+        function getActiveCategory() {
+            return appState.categories.find(c => c.id === appState.activeCategoryId) || appState.categories[0];
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 2400);
+        }
+
+        // Kompresi gambar otomatis agar aplikasi tetap cepat meski ratusan foto
+        function compressImageFile(file, maxSize = 600) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width;
+                        let h = img.height;
+                        if (w > h && w > maxSize) {
+                            h = Math.round((h * maxSize) / w);
+                            w = maxSize;
+                        } else if (h > maxSize) {
+                            w = Math.round((w * maxSize) / h);
+                            h = maxSize;
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        resolve(canvas.toDataURL('image/jpeg', 0.85));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ==========================================
+        // 4. RENDER UI DINAMIS
+        // ==========================================
+        function renderAll() {
+            renderSidebarCategories();
+            renderActiveBoard();
+            lucide.createIcons();
+        }
+
+        function renderSidebarCategories() {
+            const listEl = document.getElementById('categoryList');
+            listEl.innerHTML = '';
+
+            appState.categories.forEach(cat => {
+                const isActive = cat.id === appState.activeCategoryId;
+                const btn = document.createElement('button');
+                btn.onclick = () => {
+                    appState.activeCategoryId = cat.id;
+                    saveStateToDB();
+                    renderAll();
+                    toggleSidebar(false);
+                };
+                btn.className = `w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                    isActive 
+                        ? 'bg-gray-800 text-white shadow-xs border border-gray-700/80' 
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+                }`;
+                btn.innerHTML = `
+                    <div class="flex items-center gap-2.5 truncate">
+                        <span class="text-base">${cat.icon || '📌'}</span>
+                        <span class="truncate">${cat.name}</span>
+                    </div>
+                    <span class="text-xs px-1.5 py-0.5 rounded bg-gray-950/60 text-gray-400">${cat.items.length}</span>
+                `;
+                listEl.appendChild(btn);
+            });
+        }
+
+        function renderActiveBoard() {
+            const cat = getActiveCategory();
+            document.getElementById('activeCategoryTitle').textContent = `${cat.icon || '📌'} ${cat.name.toUpperCase()}`;
+
+            // Destroy Sortable lama sebelum render ulang
+            sortableInstances.forEach(inst => inst.destroy());
+            sortableInstances = [];
+
+            const rowsContainer = document.getElementById('tierRowsContainer');
+            rowsContainer.innerHTML = '';
+
+            // Render setiap baris Tier (S+, S, A, B, C, D, E)
+            cat.tiers.forEach(tier => {
+                const itemsInTier = cat.items.filter(item => item.tier === tier.id);
+
+                const row = document.createElement('div');
+                row.className = 'flex min-h-[86px] md:min-h-[104px] bg-gray-900/90';
+
+                // Kolom Label Tier (Kiri)
+                const labelCol = document.createElement('div');
+                labelCol.style.backgroundColor = tier.color;
+                labelCol.className = 'w-16 sm:w-24 md:w-28 shrink-0 flex flex-col items-center justify-center p-2 text-center select-none shadow-inner cursor-pointer hover:brightness-110 transition';
+                labelCol.title = tier.desc || tier.label;
+                labelCol.onclick = () => openTierSettingsModal();
+                labelCol.innerHTML = `
+                    <span class="font-extrabold text-xl md:text-2xl text-gray-950 drop-shadow-xs leading-tight break-words max-w-full">${tier.label}</span>
+                    ${tier.desc ? `<span class="text-[10px] font-semibold text-gray-950/80 leading-tight mt-0.5 line-clamp-1 hidden sm:block">${tier.desc}</span>` : ''}
+                `;
+
+                // Kolom Dropzone Gambar (Kanan)
+                const dropzone = document.createElement('div');
+                dropzone.dataset.tierId = tier.id;
+                dropzone.className = 'tier-dropzone flex-1 p-2 flex flex-wrap gap-2 items-center content-center min-h-[86px] md:min-h-[104px] transition-colors';
+
+                itemsInTier.forEach(item => {
+                    dropzone.appendChild(createItemCardElement(item));
+                });
+
+                row.appendChild(labelCol);
+                row.appendChild(dropzone);
+                rowsContainer.appendChild(row);
+            });
+
+            // Render Unranked Pool
+            const unrankedPool = document.getElementById('unrankedPool');
+            unrankedPool.innerHTML = '';
+            const unrankedItems = cat.items.filter(item => !cat.tiers.some(t => t.id === item.tier));
+            document.getElementById('unrankedCount').textContent = unrankedItems.length;
+
+            unrankedItems.forEach(item => {
+                unrankedPool.appendChild(createItemCardElement(item));
+            });
+
+            // Aktifkan Drag & Drop di semua baris Tier & Unranked Pool
+            const allZones = document.querySelectorAll('.tier-dropzone');
+            allZones.forEach(zone => {
+                const sortable = new Sortable(zone, {
+                    group: 'shared-tier-items',
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    dragClass: 'sortable-drag',
+                    delay: 120, // Memudahkan scroll di layar HP tanpa tak sengaja menggeser gambar
+                    delayOnTouchOnly: true,
+                    onEnd: () => syncOrderFromDOM()
+                });
+                sortableInstances.push(sortable);
+            });
+        }
+
+        function createItemCardElement(item) {
+            const card = document.createElement('div');
+            card.dataset.itemId = item.id;
+            card.onclick = () => openItemModal(item.id);
+            card.className = 'group relative w-[72px] h-[72px] sm:w-[86px] sm:h-[86px] rounded-lg overflow-hidden bg-gray-800 border border-gray-700 hover:border-blue-400 cursor-pointer shrink-0 shadow-md transition-transform hover:scale-105 select-none';
+
+            const hasNote = item.note && item.note.trim().length > 0;
+
+            card.innerHTML = `
+                <img src="${item.image}" alt="${item.title || 'Item'}" class="w-full h-full object-cover pointer-events-none">
+                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-1 pt-3 flex items-end justify-between">
+                    <span class="text-[10px] font-medium text-gray-100 truncate max-w-[75%] leading-none">${item.title || ''}</span>
+                    ${hasNote ? `
+                        <span class="bg-gray-900/90 text-amber-400 p-0.5 rounded shadow" title="Memiliki catatan">
+                            <i data-lucide="file-text" class="w-3 h-3"></i>
+                        </span>
+                    ` : ''}
+                </div>
+            `;
+            return card;
+        }
+
+        // Sinkronisasi urutan dan posisi tier setelah di-drag & drop
+        function syncOrderFromDOM() {
+            const cat = getActiveCategory();
+            const newItemsOrder = [];
+            const itemMap = new Map(cat.items.map(i => [i.id, i]));
+
+            document.querySelectorAll('.tier-dropzone').forEach(zone => {
+                const tierId = zone.dataset.tierId;
+                zone.querySelectorAll('[data-item-id]').forEach(cardEl => {
+                    const itemId = cardEl.dataset.itemId;
+                    const itemObj = itemMap.get(itemId);
+                    if (itemObj) {
+                        itemObj.tier = tierId;
+                        newItemsOrder.push(itemObj);
+                    }
+                });
+            });
+
+            cat.items = newItemsOrder;
+            saveStateToDB();
+            document.getElementById('unrankedCount').textContent = cat.items.filter(i => i.tier === 'unranked').length;
+        }
+
+        // ==========================================
+        // 5. MODAL DETAIL ITEM (NOTE, PINDAH TIER, HAPUS)
+        // ==========================================
+        function openItemModal(itemId) {
+            const cat = getActiveCategory();
+            const item = cat.items.find(i => i.id === itemId);
+            if (!item) return;
+
+            currentEditingItemId = itemId;
+            document.getElementById('modalItemImage').src = item.image;
+            document.getElementById('modalItemTitle').value = item.title || '';
+            document.getElementById('modalItemNote').value = item.note || '';
+
+            const selectEl = document.getElementById('modalItemTierSelect');
+            selectEl.innerHTML = '';
+            cat.tiers.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = `${t.label} ${t.desc ? '- ' + t.desc : ''}`;
+                selectEl.appendChild(opt);
+            });
+            const unrankedOpt = document.createElement('option');
+            unrankedOpt.value = 'unranked';
+            unrankedOpt.textContent = '📥 Unranked Pool (Belum Masuk Tier)';
+            selectEl.appendChild(unrankedOpt);
+
+            selectEl.value = cat.tiers.some(t => t.id === item.tier) ? item.tier : 'unranked';
+            document.getElementById('itemDetailModal').classList.remove('hidden');
+        }
+
+        function closeItemModal() {
+            currentEditingItemId = null;
+            document.getElementById('itemDetailModal').classList.add('hidden');
+        }
+
+        function saveItemDetail() {
+            if (!currentEditingItemId) return;
+            const cat = getActiveCategory();
+            const item = cat.items.find(i => i.id === currentEditingItemId);
+            if (item) {
+                item.title = document.getElementById('modalItemTitle').value.trim();
+                item.tier = document.getElementById('modalItemTierSelect').value;
+                item.note = document.getElementById('modalItemNote').value.trim();
+                saveStateToDB();
+                renderAll();
+                showToast('Detail item berhasil disimpan!');
+            }
+            closeItemModal();
+        }
+
+        async function replaceItemImage(event) {
+            const file = event.target.files[0];
+            if (!file || !currentEditingItemId) return;
+            const dataUrl = await compressImageFile(file);
+            document.getElementById('modalItemImage').src = dataUrl;
+            const cat = getActiveCategory();
+            const item = cat.items.find(i => i.id === currentEditingItemId);
+            if (item) {
+                item.image = dataUrl;
+                saveStateToDB();
+                renderAll();
+            }
+        }
+
+        function deleteCurrentItem() {
+            if (!currentEditingItemId) return;
+            const cat = getActiveCategory();
+            cat.items = cat.items.filter(i => i.id !== currentEditingItemId);
+            saveStateToDB();
+            renderAll();
+            closeItemModal();
+            showToast('Gambar berhasil dihapus.');
+        }
+
+        // ==========================================
+        // 6. TAMBAH GAMBAR (UPLOAD FILE, URL, & PASTE CLIPBOARD)
+        // ==========================================
+        function openAddImageModal() {
+            const cat = getActiveCategory();
+            const tierSelect = document.getElementById('imageUrlTier');
+            tierSelect.innerHTML = `<option value="unranked">Unranked Pool</option>`;
+            cat.tiers.forEach(t => {
+                tierSelect.innerHTML += `<option value="${t.id}">Tier ${t.label}</option>`;
+            });
+            document.getElementById('imageUrlInput').value = '';
+            document.getElementById('imageUrlTitle').value = '';
+            document.getElementById('addImageModal').classList.remove('hidden');
+        }
+
+        function closeAddImageModal() {
+            document.getElementById('addImageModal').classList.add('hidden');
+        }
+
+        async function handleMultipleFiles(event) {
+            const files = Array.from(event.target.files);
+            if (!files.length) return;
+
+            const cat = getActiveCategory();
+            for (const file of files) {
+                const compressedDataUrl = await compressImageFile(file);
+                const cleanName = file.name.replace(/\.[^/.]+$/, '');
+                cat.items.push({
+                    id: 'item-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+                    title: cleanName,
+                    tier: 'unranked',
+                    note: '',
+                    image: compressedDataUrl
+                });
+            }
+            event.target.value = '';
+            saveStateToDB();
+            renderAll();
+            closeAddImageModal();
+            showToast(`${files.length} gambar berhasil ditambahkan!`);
+        }
+
+        function addImageFromUrl() {
+            const url = document.getElementById('imageUrlInput').value.trim();
+            const title = document.getElementById('imageUrlTitle').value.trim();
+            const tier = document.getElementById('imageUrlTier').value;
+
+            if (!url) {
+                showToast('Masukkan link URL gambar terlebih dahulu!');
+                return;
+            }
+            const cat = getActiveCategory();
+            cat.items.push({
+                id: 'item-' + Date.now(),
+                title: title || 'Item Baru',
+                tier: tier,
+                note: '',
+                image: url
+            });
+            saveStateToDB();
+            renderAll();
+            closeAddImageModal();
+            showToast('Gambar dari URL berhasil ditambahkan!');
+        }
+
+        // Listener Paste Gambar langsung (Ctrl+V) di mana saja
+        window.addEventListener('paste', async (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const dataUrl = await compressImageFile(file);
+                        const cat = getActiveCategory();
+                        cat.items.push({
+                            id: 'item-' + Date.now(),
+                            title: 'Pasted Image',
+                            tier: 'unranked',
+                            note: '',
+                            image: dataUrl
+                        });
+                        saveStateToDB();
+                        renderAll();
+                        showToast('Gambar dari clipboard berhasil ditempel ke Unranked Pool!');
+                    }
+                }
+            }
+        });
+
+        // ==========================================
+        // 7. MANAJEMEN KATEGORI (TAMBAH, EDIT, HAPUS)
+        // ==========================================
+        function openCategoryModal(isEdit = false) {
+            isEditingCategoryMode = isEdit;
+            const header = document.getElementById('categoryModalHeader');
+            const iconInput = document.getElementById('catIconInput');
+            const nameInput = document.getElementById('catNameInput');
+
+            if (isEdit) {
+                const cat = getActiveCategory();
+                header.textContent = 'Ubah Kategori';
+                iconInput.value = cat.icon || '📌';
+                nameInput.value = cat.name;
+            } else {
+                header.textContent = 'Buat Kategori Baru';
+                iconInput.value = '📌';
+                nameInput.value = '';
+            }
+            document.getElementById('categoryModal').classList.remove('hidden');
+            nameInput.focus();
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('categoryModal').classList.add('hidden');
+        }
+
+        function setCatEmoji(emoji) {
+            document.getElementById('catIconInput').value = emoji;
+        }
+
+        function saveCategoryForm() {
+            const icon = document.getElementById('catIconInput').value.trim() || '📌';
+            const name = document.getElementById('catNameInput').value.trim();
+
+            if (!name) {
+                showToast('Nama kategori tidak boleh kosong!');
+                return;
+            }
+
+            if (isEditingCategoryMode) {
+                const cat = getActiveCategory();
+                cat.icon = icon;
+                cat.name = name;
+                showToast('Kategori diperbarui!');
+            } else {
+                const newId = 'cat-' + Date.now();
+                appState.categories.push({
+                    id: newId,
+                    name: name,
+                    icon: icon,
+                    tiers: JSON.parse(JSON.stringify(DEFAULT_TIERS)),
+                    items: []
+                });
+                appState.activeCategoryId = newId;
+                showToast(`Kategori "${name}" berhasil dibuat!`);
+            }
+
+            saveStateToDB();
+            renderAll();
+            closeCategoryModal();
+        }
+
+        function deleteCurrentCategory() {
+            if (appState.categories.length <= 1) {
+                showToast('Minimal harus ada 1 kategori aktif!');
+                return;
+            }
+            const cat = getActiveCategory();
+            if (confirm(`Hapus kategori "${cat.name}" beserta seluruh gambar di dalamnya?`)) {
+                appState.categories = appState.categories.filter(c => c.id !== cat.id);
+                appState.activeCategoryId = appState.categories[0].id;
+                saveStateToDB();
+                renderAll();
+                showToast('Kategori berhasil dihapus.');
+            }
+        }
+
+        // ==========================================
+        // 8. KUSTOMISASI BARIS TIER (LABEL, SUB-LABEL, WARNA)
+        // ==========================================
+        function openTierSettingsModal() {
+            const cat = getActiveCategory();
+            const container = document.getElementById('tierSettingsList');
+            container.innerHTML = '';
+
+            cat.tiers.forEach((tier, index) => {
+                container.appendChild(createTierSettingRow(tier.id, tier.label, tier.desc || '', tier.color, index));
+            });
+
+            document.getElementById('tierSettingsModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function createTierSettingRow(id, label, desc, color) {
+            const div = document.createElement('div');
+            div.className = 'tier-setting-row flex items-center gap-2 bg-gray-950 p-2 rounded-lg border border-gray-800';
+            div.dataset.tierId = id;
+            div.innerHTML = `
+                <input type="color" value="${color}" class="tier-color-input w-9 h-9 rounded cursor-pointer bg-transparent border-0 shrink-0">
+                <input type="text" value="${label}" placeholder="Label (S+)" class="tier-label-input w-16 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-center font-bold text-white outline-none">
+                <input type="text" value="${desc}" placeholder="Keterangan (opsional)..." class="tier-desc-input flex-1 bg-gray-900 border border-gray-700 rounded px-2.5 py-1.5 text-gray-200 outline-none">
+                <button type="button" onclick="this.parentElement.remove()" class="p-1.5 text-gray-500 hover:text-red-400 transition" title="Hapus Baris">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+            `;
+            return div;
+        }
+
+        function addNewTierRow() {
+            const container = document.getElementById('tierSettingsList');
+            const newId = 'tier-' + Date.now();
+            container.appendChild(createTierSettingRow(newId, 'NEW', 'Keterangan Tier', '#14b8a6'));
+            lucide.createIcons();
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function saveTierSettings() {
+            const rows = document.querySelectorAll('.tier-setting-row');
+            if (rows.length === 0) {
+                showToast('Minimal harus ada 1 baris tier!');
+                return;
+            }
+            const newTiers = [];
+            rows.forEach(r => {
+                const id = r.dataset.tierId;
+                const color = r.querySelector('.tier-color-input').value;
+                const label = r.querySelector('.tier-label-input').value.trim() || 'TIER';
+                const desc = r.querySelector('.tier-desc-input').value.trim();
+                newTiers.push({ id, label, desc, color });
+            });
+
+            const cat = getActiveCategory();
+            cat.tiers = newTiers;
+            saveStateToDB();
+            renderAll();
+            closeTierSettingsModal();
+            showToast('Pengaturan tier berhasil diperbarui!');
+        }
+
+        function closeTierSettingsModal() {
+            document.getElementById('tierSettingsModal').classList.add('hidden');
+        }
+
+        // ==========================================
+        // 9. EXPORT KE PNG & BACKUP/RESTORE JSON
+        // ==========================================
+        async function exportToPNG() {
+            const cat = getActiveCategory();
+            const captureArea = document.getElementById('captureArea');
+            const exportHeader = document.getElementById('exportHeader');
+            const exportTitleText = document.getElementById('exportTitleText');
+
+            exportTitleText.textContent = `${cat.icon || '📌'} ${cat.name}`;
+            exportHeader.classList.remove('hidden');
+            showToast('Sedang memproses gambar PNG...');
+
+            try {
+                const canvas = await html2canvas(captureArea, {
+                    backgroundColor: '#030712',
+                    scale: 2,
+                    useCORS: true
+                });
+                const link = document.createElement('a');
+                link.download = `TierList-${cat.name.replace(/\s+/g, '_')}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('Gambar PNG berhasil diunduh!');
+            } catch (err) {
+                console.error(err);
+                showToast('Gagal mengekspor gambar.');
+            } finally {
+                exportHeader.classList.add('hidden');
+            }
+        }
+
+        function exportBackupJSON() {
+            const dataStr = JSON.stringify(appState, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Backup-TierList-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('File backup JSON berhasil diunduh!');
+        }
+
+        function importBackupJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed && Array.isArray(parsed.categories)) {
+                        appState = parsed;
+                        saveStateToDB();
+                        renderAll();
+                        showToast('Data berhasil dipulihkan dari Backup!');
+                    } else {
+                        showToast('Format file JSON tidak valid.');
+                    }
+                } catch (err) {
+                    showToast('Gagal membaca file JSON.');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // ==========================================
+        // 10. KONTROL SIDEBAR MOBILE & INISIALISASI
+        // ==========================================
+        function toggleSidebar(show) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (show) {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            appState = await loadStateFromDB();
+            renderAll();
+        });
+    </script>
+</body>
+</html>
